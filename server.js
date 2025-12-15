@@ -49,10 +49,30 @@ app.post('/api/generate', async (req, res) => {
             }
         });
 
+        // Handle SSE response (API returns "data: {...}")
+        let data = response.data;
+
+        if (typeof data === 'string' && data.includes('data:')) {
+            try {
+                // Extract the JSON object from the SSE stream
+                const matches = data.match(/data: ({.*})/);
+                if (matches && matches[1]) {
+                    data = JSON.parse(matches[1]);
+                    // Check specifically for rendering_done or just use the root
+                    if (data.rendering_done) {
+                        data = data.rendering_done;
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to parse SSE:', e);
+            }
+        }
+
         // Normalize response for frontend
-        const data = response.data;
         if (data.output_file) {
             data.url = data.output_file;
+        } else if (data.url) {
+            // Already has url
         }
 
         res.json(data);
