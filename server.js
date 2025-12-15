@@ -9,25 +9,6 @@ const port = process.env.PORT || 3001;
 
 // Config
 const apiKey = process.env.GRAYDIENT_API_KEY || '0Cqo0fZp1ViEI1oFnLLWRDzDcndzycvo8lfyxrLmiWzfgnXO';
-const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-const telegramChatId = process.env.TELEGRAM_CHAT_ID;
-
-// Utils
-async function sendToTelegram(imageUrl, prompt) {
-    if (!telegramToken || !telegramChatId) return;
-    try {
-        const caption = `🎨 *New Generation*\n\n${prompt.substring(0, 100)}...`;
-        await axios.post(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, {
-            chat_id: telegramChatId,
-            photo: imageUrl,
-            caption: caption,
-            parse_mode: 'Markdown'
-        });
-        console.log('Sent to Telegram');
-    } catch (e) {
-        console.error('Telegram Error:', e.message);
-    }
-}
 
 app.use(cors());
 app.use(express.json());
@@ -95,11 +76,6 @@ app.post('/api/generate', async (req, res) => {
             data.url = data.output_file;
         } else if (data.url) {
             // Already has url
-        }
-
-        // Send to Telegram asynchronously
-        if (data.url) {
-            sendToTelegram(data.url, prompt).catch(console.error);
         }
 
         res.json(data);
