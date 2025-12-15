@@ -39,11 +39,11 @@ const WORKFLOWS = {
     },
     'Lustify / Explicit': {
         width: 768, height: 768,
-        sampler: "lcm_base",
-        steps: 10,
-        cfg_scale: 1.0,
-        model: "lustify4-xl", // Logic mapping
-        loras: "<lustify4-xl><dmd:1>",
+        sampler: "DPM++ 2M Karras", // Switched from lcm_base for quality
+        steps: 25,
+        cfg_scale: 7.0,
+        model: "realvis5-xl", // Switched from lustify4-xl (unreliable/filtered) to reliable base
+        loras: "<lustify4-xl><dmd:1>", // Keep style if possible, or just tags
         pos_prefix: "(score_9, score_8_up, score_7_up), (masterpiece, hyperrealistic, absurdres), NSFW, masterpiece, ultra-realistic, 8K, highly-detailed, ",
         neg_prefix: "(score_6, score_5, score_4, mutated, deformed, ugly hands, bad quality, low quality, jpg, boring), "
     },

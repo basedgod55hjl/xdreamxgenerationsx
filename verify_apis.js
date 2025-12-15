@@ -47,17 +47,22 @@ async function testGraydientGeneration() {
     console.log('\n--- Testing Graydient Generation (Unrestricted) ---');
 
     try {
-        // EXACT PAYLOAD STRUCTURE FOR V3
+        // LUSTIFY WORKFLOW REPRO PAYLOAD
         const payload = {
-            prompt: "1girl, thick thighs, (fully nude:1.4), detailed anatomy, masterpiece, best quality, <realvis5-xl>",
-            negative_prompt: "(worst quality:1.4), (bad anatomy:1.4), zombie, watermark, text",
-            model: "realvis5-xl",
-            width: 512,
-            height: 512,
-            safety_checker: false, // HARDCODED UNRESTRICTED
-            nsfw: true,           // HARDCODED UNRESTRICTED
-            stream: true          // REQUIRED FOR V3
+            prompt: "(score_9, score_8_up, score_7_up), (masterpiece, hyperrealistic, absurdres), NSFW, masterpiece, ultra-realistic, 8K, highly-detailed, 1girl, nude, <lustify4-xl><dmd:1>",
+            negative_prompt: "(score_6, score_5, score_4, mutated, deformed, ugly hands, bad quality, low quality, jpg, boring), ",
+            model: "lustify4-xl",
+            width: 768,
+            height: 768,
+            sampler: "lcm_base", // Suspect this might be invalid
+            steps: 10,
+            cfg_scale: 1.0,
+            safety_checker: false,
+            nsfw: true,
+            stream: true
         };
+
+        console.log('Sending Lustify Payload:', JSON.stringify(payload, null, 2));
 
         console.log('Sending Payload:', JSON.stringify(payload, null, 2));
 
@@ -86,7 +91,12 @@ async function testGraydientGeneration() {
                             const jsonStr = trimmed.replace('data: ', '').trim();
                             if (jsonStr === '[DONE]') return;
                             const data = JSON.parse(jsonStr);
-                            console.log('PARSED EVENT:', Object.keys(data)); // DEBUG
+                            console.log('PARSED EVENT:', Object.keys(data));
+
+                            // DEBUG: Log content of rendering_done to find the URL
+                            if (data.rendering_done) {
+                                console.log('RENDERING_DONE CONTENT:', JSON.stringify(data.rendering_done, null, 2));
+                            }
 
                             // Check for output_file at root or nested
                             const url = data.output_file || (data.rendering_done && data.rendering_done.output_file);
