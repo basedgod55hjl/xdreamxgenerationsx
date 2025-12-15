@@ -133,6 +133,11 @@ app.post('/api/generate', async (req, res) => {
                             if (jsonStr === '[DONE]') return;
                             const data = JSON.parse(jsonStr);
 
+                            // Log errors from API
+                            if (data.error || data.message === 'Internal Server Error') {
+                                console.error('API Stream Error Node:', data);
+                            }
+
                             // Check for output_file at root or nested in rendering_done
                             const url = data.output_file ||
                                 (data.rendering_done && data.rendering_done.output_file);
@@ -142,22 +147,29 @@ app.post('/api/generate', async (req, res) => {
                                 resolve(); // Found it
                             }
                         } catch (e) {
-                            // ignore partials
+                            // ignore parse errors for partial lines
                         }
                     }
                 });
             });
 
-            response.data.on('end', () => resolve());
+            response.data.on('end', () => {
+                if (!finalUrl) {
+                    console.log('Stream ended without URL. Partial Buffer:', buffer.slice(-500)); // Log last 500 chars
+                }
+                resolve();
+            });
+
             response.data.on('error', (err) => reject(err));
         });
 
         if (!finalUrl) {
-            throw new Error('Image generation completed but no URL was found in stream.');
+            console.error('Proxy Error: Image generation completed but no URL was found in stream.');
+            res.status(500).json({ error: 'Generation failed upstream. Check logs.' });
+            return;
         }
 
-        const data = { url: finalUrl };
-        res.json(data);
+        res.json({ url: finalUrl });
 
     } catch (error) {
         console.error('Proxy Error:', error.message);
