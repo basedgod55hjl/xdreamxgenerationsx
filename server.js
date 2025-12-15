@@ -49,35 +49,51 @@ app.post('/api/generate', async (req, res) => {
             headers: {
                 'Authorization': `Bearer ${graydientApiKey}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            responseType: 'stream'
         });
 
-        // Handle SSE response (API returns "data: {...}")
-        let data = response.data;
+        // Robust Stream Parsing
+        let finalUrl = null;
 
-        if (typeof data === 'string' && data.includes('data:')) {
-            try {
-                // Extract the JSON object from the SSE stream
-                const matches = data.match(/data: ({.*})/);
-                if (matches && matches[1]) {
-                    data = JSON.parse(matches[1]);
-                    // Check specifically for rendering_done or just use the root
-                    if (data.rendering_done) {
-                        data = data.rendering_done;
+        await new Promise((resolve, reject) => {
+            let buffer = '';
+            response.data.on('data', (chunk) => {
+                const str = chunk.toString();
+                buffer += str;
+                const lines = str.split('\n');
+                lines.forEach(line => {
+                    const trimmed = line.trim();
+                    if (trimmed.startsWith('data: ')) {
+                        try {
+                            const jsonStr = trimmed.replace('data: ', '').trim();
+                            if (jsonStr === '[DONE]') return;
+                            const data = JSON.parse(jsonStr);
+
+                            // Check for output_file at root or nested in rendering_done
+                            const url = data.output_file ||
+                                (data.rendering_done && data.rendering_done.output_file);
+
+                            if (url) {
+                                finalUrl = url;
+                                resolve(); // Found it
+                            }
+                        } catch (e) {
+                            // ignore partials
+                        }
                     }
-                }
-            } catch (e) {
-                console.error('Failed to parse SSE:', e);
-            }
+                });
+            });
+
+            response.data.on('end', () => resolve());
+            response.data.on('error', (err) => reject(err));
+        });
+
+        if (!finalUrl) {
+            throw new Error('Image generation completed but no URL was found in stream.');
         }
 
-        // Normalize response for frontend
-        if (data.output_file) {
-            data.url = data.output_file;
-        } else if (data.url) {
-            // Already has url
-        }
-
+        const data = { url: finalUrl };
         res.json(data);
 
     } catch (error) {
