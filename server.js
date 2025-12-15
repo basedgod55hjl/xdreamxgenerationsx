@@ -46,6 +46,16 @@ const WORKFLOWS = {
         loras: "<lustify4-xl><dmd:1>",
         pos_prefix: "(score_9, score_8_up, score_7_up), (masterpiece, hyperrealistic, absurdres), NSFW, masterpiece, ultra-realistic, 8K, highly-detailed, ",
         neg_prefix: "(score_6, score_5, score_4, mutated, deformed, ugly hands, bad quality, low quality, jpg, boring), "
+    },
+    'Lucario NSFW': {
+        width: 832, height: 1216,
+        sampler: "DPM++ 2M Karras",
+        steps: 25, // Optimized for speed (<30s)
+        cfg_scale: 7.0,
+        model: "realvis5-xl",
+        loras: "<realvis5-xl>",
+        pos_prefix: "masterpiece, best quality, (explicit NSFW:1.4), detailed anatomy, ",
+        neg_prefix: "(worst quality, low quality:1.4), zombie, watermark, text, "
     }
 };
 
@@ -60,11 +70,11 @@ app.post('/api/generate', async (req, res) => {
 
         const apiUrl = 'https://cxy5wpx250x.graydient.ai/api/v3/render/';
 
-        // Default Config
+        // Default Config (Optimized for Heroku Timeout)
         let config = {
             width: 1024, height: 1024,
             sampler: "DPM++ 2M Karras",
-            steps: 40,
+            steps: 25, // Reduced from 40 to prevent H12 timeout
             cfg_scale: 7,
             model: "realvis5-xl",
             loras: "",
