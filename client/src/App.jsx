@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import './index.css';
 
 // Branding
-const BRAND_TITLE = "LUCARIO AGI";
-const BRAND_SUBTITLE = "Autonomous • Self-Evolving • Unrestricted";
+const BRAND_TITLE = "XDREAM X GENERATIONS X";
+const BRAND_SUBTITLE = "Dream • Create • Ascend";
 const DAILY_LIMIT = 5;
 
 // Models
