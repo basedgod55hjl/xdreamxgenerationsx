@@ -21,21 +21,25 @@ app.post('/api/generate', async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
         }
 
-        // Private Graydient Endpoint
-        const apiUrl = 'https://cxy5wpx250x.graydient.ai/v1/generate';
+        // Private Graydient Endpoint (V3)
+        const apiUrl = 'https://cxy5wpx250x.graydient.ai/api/v3/render/';
 
-        // Unrestricted payload configuration
+        // Unrestricted payload configuration for V3
         const payload = {
             prompt: prompt,
-            negative_prompt: negative_prompt || "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)",
             model: model || "flux-realism",
+            negative_prompt: negative_prompt || "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)",
+            // V3 Params
+            stream: true,
             steps: 40,
             cfg_scale: 7,
             width: 1024,
             height: 1024,
             samples: 1,
-            safety_checker: false, // Attempt to disable safety
-            nsfw: true             // Request unrestricted
+            // Unrestricted flags (best effort)
+            safety_checker: false,
+            nsfw: true,
+            // Pass model as "model" or embedded in prompt? V3 often takes "model" field
         };
 
         const response = await axios.post(apiUrl, payload, {
@@ -45,7 +49,13 @@ app.post('/api/generate', async (req, res) => {
             }
         });
 
-        res.json(response.data);
+        // Normalize response for frontend
+        const data = response.data;
+        if (data.output_file) {
+            data.url = data.output_file;
+        }
+
+        res.json(data);
 
     } catch (error) {
         console.error('Proxy Error:', error.message);
