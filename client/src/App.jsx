@@ -23,6 +23,28 @@ function App() {
   const [selectedModel, setSelectedModel] = useState(TOP_MODELS[0].id);
   const [selectedConcepts, setSelectedConcepts] = useState([]);
   const [prompt, setPrompt] = useState('');
+  const [refinedPrompt, setRefinedPrompt] = useState(null);
+  const [history, setHistory] = useState([]);
+
+  // Load History on Mount
+  useEffect(() => {
+    const saved = localStorage.getItem('xdream_history');
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
+    }
+  }, []);
+
+  // Save History Helper
+  const addToHistory = (newItem) => {
+    const updated = [newItem, ...history].slice(0, 50); // Keep last 50
+    setHistory(updated);
+    localStorage.setItem('xdream_history', JSON.stringify(updated));
+  };
+
   const [loading, setLoading] = useState(false);
   const [imageResult, setImageResult] = useState(null);
   const [error, setError] = useState('');
@@ -34,8 +56,6 @@ function App() {
   // New states for tabs and vision
   const [activeTab, setActiveTab] = useState('gen'); // 'gen', 'swap', 'vision'
   const [workflow, setWorkflow] = useState('Lucario NSFW'); // 'Lucario NSFW', 'Photorealistic', 'Anime / Booru', 'Cinematic'
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [analyzing, setAnalyzing] = useState(false);
 
   // Stats
   const [generationsLeft, setGenerationsLeft] = useState(DAILY_LIMIT);
@@ -125,8 +145,16 @@ function App() {
       if (!response.ok) throw new Error(data.error || 'Failed');
 
       // Handle Data URL or URL
-      setImageResult(data.url || data.image || data.output_url);
+      const imageUrl = data.url || data.image || data.output_url;
+      setImageResult(imageUrl);
       incrementUsage();
+      addToHistory({
+        type: 'image',
+        url: imageUrl,
+        prompt: finalPrompt,
+        workflow: workflow || 'Custom',
+        date: new Date().toISOString()
+      });
 
     } catch (err) {
       setError(err.message);
@@ -158,11 +186,22 @@ function App() {
           target_image: targetImage
         })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Face Swap Failed');
+      const resultData = await response.json();
 
-      setImageResult(data.url || data.image);
-      incrementUsage();
+      if (resultData.url) {
+        setImageResult(resultData.url);
+        // Add to History
+        addToHistory({
+          type: 'faceswap',
+          url: resultData.url,
+          prompt: 'Face Swap', // Or more detailed info
+          workflow: 'Face Swap',
+          date: new Date().toISOString()
+        });
+        incrementUsage();
+      } else {
+        throw new Error(resultData.error || 'Face Swap Failed');
+      }
 
     } catch (err) {
       setError(err.message);
@@ -190,25 +229,10 @@ function App() {
         <div className="limit-badge">Credits: {generationsLeft}/{DAILY_LIMIT}</div>
       </header>
 
-      <div className="nav-tabs">
-        <button
-          className={activeTab === 'gen' ? 'active' : ''}
-          onClick={() => setActiveTab('gen')}
-        >
-          Image Gen
-        </button>
-        <button
-          className={activeTab === 'swap' ? 'active' : ''}
-          onClick={() => setActiveTab('swap')}
-        >
-          Face Swap
-        </button>
-        <button
-          className={activeTab === 'vision' ? 'active' : ''}
-          onClick={() => setActiveTab('vision')}
-        >
-          Image Analysis 👁️
-        </button>
+      <div className="tab-bar">
+        <button className={activeTab === 'gen' ? 'active' : ''} onClick={() => setActiveTab('gen')}>Create 🎨</button>
+        <button className={activeTab === 'swap' ? 'active' : ''} onClick={() => setActiveTab('swap')}>Face Swap 🎭</button>
+        <button className={activeTab === 'history' ? 'active' : ''} onClick={() => setActiveTab('history')}>History 📜</button>
       </div>
 
       <div className="container">
@@ -309,57 +333,43 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'vision' && (
-          <div className="faceswap-area">
-            <div className="upload-box full-width">
-              <h3>📸 Image Analysis</h3>
-              <p style={{ color: '#666', marginBottom: '1rem' }}>Upload an image to extract visual tags and generate a detailed description.</p>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  // Mock analysis for now since API is 404
-                  const file = e.target.files[0];
-                  if (file) {
-                    setAnalyzing(true);
-                    setTimeout(() => {
-                      setAnalysisResult(`### VISUAL ELEMENTS:
-The image captures a subject with high detail. Lighting is roughly balanced... (Simulated Result - Vision API unavailable)
-                                            
-### PROMPT SUGGESTION:
-1girl, detailed face, (photorealistic:1.4), masterpiece...`);
-                      setAnalyzing(false);
-                    }, 2000);
-                  }
-                }}
-              />
-              {analyzing && <div className="loading-spinner" style={{ marginTop: '1rem' }}></div>}
-            </div>
-
-            {analysisResult && (
-              <div className="result-area full-width" style={{ display: 'block', padding: '1.5rem', whiteSpace: 'pre-wrap', textAlign: 'left', color: '#ccc' }}>
-                {analysisResult}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Results Area (Global) */}
+        {/* RESULT AREA */}
         <div className="result-area">
           {loading && <div className="loading-spinner"></div>}
-          {error && <div style={{ color: '#ff4d4d' }}>{error}</div>}
-          {imageResult && (
-            <div className="result-container">
-              <img src={imageResult} alt="Generated Art" className="generated-image" />
-              <a href={imageResult} download={`lucario_agi_${Date.now()}.png`} className="download-btn">
-                Download
-              </a>
+          {error && <div className="error-message" style={{ color: '#ff4d4d', padding: '1rem', background: 'rgba(255,0,0,0.1)', borderRadius: '8px' }}>{error}</div>}
+
+          {!loading && imageResult && activeTab !== 'history' && (
+            <div className="result-card">
+              <img src={imageResult} alt="Generated Result" className="result-image" />
+              <div className="result-actions">
+                <a href={imageResult} download="dream_gen.jpg" className="action-btn" target="_blank" rel="noreferrer">
+                  Save to Device 💾
+                </a>
+              </div>
             </div>
           )}
-          {!loading && !imageResult && !error && (
-            <p style={{ color: 'rgba(255,255,255,0.2)' }}>
-              {activeTab === 'gen' ? 'Unrestricted AGI awaits.' : (activeTab === 'swap' ? 'Upload images to swap.' : 'Upload for Analysis.')}
-            </p>
+
+          {!loading && !imageResult && activeTab !== 'history' && (
+            <div className="placeholder-text">
+              {activeTab === 'gen' ? 'Select a workflow and dream...' : 'Upload images to swap faces...'}
+            </div>
+          )}
+
+          {/* HISTORY TAB */}
+          {activeTab === 'history' && (
+            <div className="history-grid">
+              {history.length === 0 && <div className="placeholder-text">No history yet. Create something!</div>}
+              {history.map((item, idx) => (
+                <div key={idx} className="history-card">
+                  <img src={item.url} alt="History" />
+                  <div className="history-info">
+                    <span className="badge">{item.workflow}</span>
+                    <p>{new Date(item.date).toLocaleTimeString()}</p>
+                    <a href={item.url} target="_blank" rel="noreferrer">Download</a>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 

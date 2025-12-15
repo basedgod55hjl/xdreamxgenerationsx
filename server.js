@@ -231,31 +231,72 @@ app.post('/api/refine', async (req, res) => {
     }
 });
 
-// Face Swap Proxy
+// Face Swap Endpoint (Using V3 Render with ControlNet)
 app.post('/api/faceswap', async (req, res) => {
     try {
-        const { source_image, target_image } = req.body;
-        const apiKey = process.env.GRAYDIENT_API_KEY || process.env.GRAYDIENT_TOKEN;
+        const { sourceImage, targetImage } = req.body;
+        const graydientApiKey = process.env.GRAYDIENT_API_KEY || process.env.GRAYDIENT_TOKEN;
+        if (!graydientApiKey) {
+            return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
+        }
 
-        // Using likely ReActor endpoint or Graydient equivalent
-        const apiUrl = 'https://cxy5wpx250x.graydient.ai/v1/faceswap';
+        const apiUrl = 'https://cxy5wpx250x.graydient.ai/api/v3/render/';
 
         const payload = {
-            source_image: source_image, // Base64
-            target_image: target_image, // Base64
-            model: "inswapper_128.onnx"
+            prompt: "face swap",
+            negative_prompt: "",
+            input_image: targetImage,
+            source_image: sourceImage,
+            controlnet: "face_swap",
+            model: "realvis5-xl",
+            width: 1024,
+            height: 1024,
+            steps: 30,
+            cfg_scale: 1.5,
+            safety_checker: false,
+            nsfw: true,
+            stream: true
         };
 
         const response = await axios.post(apiUrl, payload, {
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
+                'Authorization': `Bearer ${graydientApiKey}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            responseType: 'stream'
         });
 
-        res.json(response.data);
+        let finalUrl = null;
+        await new Promise((resolve, reject) => {
+            let buffer = '';
+            response.data.on('data', (chunk) => {
+                const str = chunk.toString();
+                buffer += str;
+                const lines = str.split('\n');
+                lines.forEach(line => {
+                    if (line.trim().startsWith('data: ')) {
+                        try {
+                            const jsonStr = line.trim().replace('data: ', '').trim();
+                            if (jsonStr === '[DONE]') return;
+                            const data = JSON.parse(jsonStr);
+                            const url = data.output_file || (data.rendering_done && data.rendering_done.output_file);
+                            if (url) {
+                                finalUrl = url;
+                                resolve();
+                            }
+                        } catch (e) { }
+                    }
+                });
+            });
+            response.data.on('end', () => resolve());
+            response.data.on('error', (err) => reject(err));
+        });
+
+        if (!finalUrl) throw new Error('No URL returned from Face Swap render');
+        res.json({ url: finalUrl });
+
     } catch (error) {
-        console.error('FaceSwap Error:', error.message);
+        console.error('Face Swap Error:', error.response ? error.response.data : error.message);
         res.status(500).json({ error: 'Face Swap Failed' });
     }
 });
