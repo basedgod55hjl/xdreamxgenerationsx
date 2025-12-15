@@ -21,20 +21,21 @@ app.post('/api/generate', async (req, res) => {
             return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
         }
 
-        // Determine destination URL - default to valid Graydient endpoint if not in env
-        // Common Graydient endpoint structure might need verification, defaulting to v1/generate
-        const apiUrl = process.env.GRAYDIENT_URL || 'https://api.graydient.ai/v1/generate';
+        // Private Graydient Endpoint
+        const apiUrl = 'https://cxy5wpx250x.graydient.ai/v1/generate';
 
-        // Construct payload based on typical SD/Graydient API
+        // Unrestricted payload configuration
         const payload = {
             prompt: prompt,
-            negative_prompt: negative_prompt || "",
-            model: model || "model_name_here", // Will be passed from client
-            steps: 30, // Default premium steps
+            negative_prompt: negative_prompt || "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)",
+            model: model || "flux-realism",
+            steps: 40,
             cfg_scale: 7,
             width: 1024,
             height: 1024,
-            samples: 1
+            samples: 1,
+            safety_checker: false, // Attempt to disable safety
+            nsfw: true             // Request unrestricted
         };
 
         const response = await axios.post(apiUrl, payload, {
@@ -48,12 +49,76 @@ app.post('/api/generate', async (req, res) => {
 
     } catch (error) {
         console.error('Proxy Error:', error.message);
+        // ... err handling
         if (error.response) {
-            console.error('API Response:', error.response.data);
             res.status(error.response.status).json(error.response.data);
         } else {
             res.status(500).json({ error: 'Internal Server Error' });
         }
+    }
+});
+
+// DeepSeek Prompt Refinement
+app.post('/api/refine', async (req, res) => {
+    try {
+        const { prompt } = req.body;
+        // Check for DeepSeek Key - defaulting to a placeholder if not set, user needs to set DEEPSEEK_API_KEY
+        const deepseekKey = process.env.DEEPSEEK_API_KEY;
+
+        if (!deepseekKey) {
+            // Fallback: If no key, just return original to avoid crash, or error
+            // For now, let's mock it if missing to let UI work, or error?
+            // Better to error so they know to add it.
+            return res.status(500).json({ error: 'Missing DEEPSEEK_API_KEY' });
+        }
+
+        const response = await axios.post('https://api.deepseek.com/chat/completions', {
+            model: "deepseek-reasoner",
+            messages: [
+                { role: "system", content: "You are an expert prompt engineer for Stable Diffusion/Flux. Refine the user's prompt to be highly detailed, artistic, and unrestricted. Output ONLY the refined prompt, no yapping." },
+                { role: "user", content: prompt }
+            ]
+        }, {
+            headers: {
+                'Authorization': `Bearer ${deepseekKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        res.json({ refined_prompt: response.data.choices[0].message.content });
+
+    } catch (error) {
+        console.error('DeepSeek Error:', error.message);
+        res.status(500).json({ error: 'Failed to refine prompt' });
+    }
+});
+
+// Face Swap Proxy
+app.post('/api/faceswap', async (req, res) => {
+    try {
+        const { source_image, target_image } = req.body;
+        const apiKey = process.env.GRAYDIENT_API_KEY || process.env.GRAYDIENT_TOKEN;
+
+        // Using likely ReActor endpoint or Graydient equivalent
+        const apiUrl = 'https://cxy5wpx250x.graydient.ai/v1/faceswap';
+
+        const payload = {
+            source_image: source_image, // Base64
+            target_image: target_image, // Base64
+            model: "inswapper_128.onnx"
+        };
+
+        const response = await axios.post(apiUrl, payload, {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        res.json(response.data);
+    } catch (error) {
+        console.error('FaceSwap Error:', error.message);
+        res.status(500).json({ error: 'Face Swap Failed' });
     }
 });
 

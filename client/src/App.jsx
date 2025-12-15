@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './index.css';
 
-// Top 3 Models configuration
+// Branding
+const BRAND_TITLE = "LUCARIO AGI";
+const BRAND_SUBTITLE = "Autonomous • Self-Evolving • Unrestricted";
+const DAILY_LIMIT = 5;
+
+// Models
 const TOP_MODELS = [
   { id: 'flux-realism', name: 'Flux Realism V2', description: 'Photorealistic, high fidelity details' },
   { id: 'midjourney-style', name: 'Artistic MJ V6', description: 'Creative, abstract, painterly aesthetics' },
   { id: 'anime-master', name: 'Niji Express', description: 'Best for anime, manga, and cel-shaded styles' }
 ];
 
-// Top 10 Concepts configuration
 const TOP_CONCEPTS = [
   'Cyberpunk City', 'Ethereal Portrait', 'Dark Fantasy', 'Synthwave',
   'Studio Ghibli', 'Isometric 3D', 'Bioluminescence', 'Steampunk Gear',
@@ -16,12 +20,45 @@ const TOP_CONCEPTS = [
 ];
 
 function App() {
+  const [mode, setMode] = useState('generate'); // 'generate' | 'faceswap'
   const [selectedModel, setSelectedModel] = useState(TOP_MODELS[0].id);
   const [selectedConcepts, setSelectedConcepts] = useState([]);
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [imageResult, setImageResult] = useState(null);
   const [error, setError] = useState('');
+
+  // Face Swap State
+  const [sourceImage, setSourceImage] = useState(null);
+  const [targetImage, setTargetImage] = useState(null);
+
+  // Stats
+  const [generationsLeft, setGenerationsLeft] = useState(DAILY_LIMIT);
+
+  useEffect(() => {
+    checkDailyLimit();
+  }, []);
+
+  const checkDailyLimit = () => {
+    const today = new Date().toDateString();
+    const usage = JSON.parse(localStorage.getItem('daily_usage') || '{}');
+
+    if (usage.date !== today) {
+      // Reset logic
+      localStorage.setItem('daily_usage', JSON.stringify({ date: today, count: 0 }));
+      setGenerationsLeft(DAILY_LIMIT);
+    } else {
+      setGenerationsLeft(DAILY_LIMIT - usage.count);
+    }
+  };
+
+  const incrementUsage = () => {
+    const today = new Date().toDateString();
+    const usage = JSON.parse(localStorage.getItem('daily_usage') || '{}');
+    const newCount = (usage.count || 0) + 1;
+    localStorage.setItem('daily_usage', JSON.stringify({ date: today, count: newCount }));
+    setGenerationsLeft(DAILY_LIMIT - newCount);
+  };
 
   const toggleConcept = (concept) => {
     if (selectedConcepts.includes(concept)) {
@@ -31,18 +68,40 @@ function App() {
     }
   };
 
+  const handleRefine = async () => {
+    if (!prompt) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      const data = await res.json();
+      if (data.refined_prompt) {
+        setPrompt(data.refined_prompt);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGenerate = async () => {
-    if (!prompt && selectedConcepts.length === 0) return;
+    if (generationsLeft <= 0) {
+      setError("Daily limit reached. Come back tomorrow.");
+      return;
+    }
+    if (!prompt) return;
 
     setLoading(true);
     setError('');
     setImageResult(null);
 
     try {
-      // Combine prompt with selected concepts
       const finalPrompt = `${prompt} ${selectedConcepts.join(', ')}`.trim();
 
-      // In production, this points to our Express backend
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,13 +113,11 @@ function App() {
 
       const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate image');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed');
 
-      // Assuming API returns { url: "..." } or { image: "base64..." }
-      // Adjust based on actual Graydient response structure
+      // Handle Data URL or URL
       setImageResult(data.url || data.image || data.output_url);
+      incrementUsage();
 
     } catch (err) {
       setError(err.message);
@@ -69,80 +126,169 @@ function App() {
     }
   };
 
+  const handleFaceSwap = async () => {
+    if (generationsLeft <= 0) {
+      setError("Daily limit reached.");
+      return;
+    }
+    if (!sourceImage || !targetImage) {
+      setError("Please upload both source and target images.");
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setImageResult(null);
+
+    try {
+      const response = await fetch('/api/faceswap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_image: sourceImage,
+          target_image: targetImage
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Face Swap Failed');
+
+      setImageResult(data.url || data.image);
+      incrementUsage();
+
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImageUpload = (e, setFunc) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFunc(reader.result); // Base64
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div className="app">
-      <h1>Graydient Gen</h1>
-      <p className="subtitle">Premium AI Image Studio</p>
+      <header className="brand-header">
+        <h1>{BRAND_TITLE}</h1>
+        <p className="subtitle">{BRAND_SUBTITLE}</p>
+        <div className="limit-badge">Credits: {generationsLeft}/{DAILY_LIMIT}</div>
+      </header>
+
+      <div className="nav-tabs">
+        <button className={mode === 'generate' ? 'active' : ''} onClick={() => setMode('generate')}>Image Gen</button>
+        <button className={mode === 'faceswap' ? 'active' : ''} onClick={() => setMode('faceswap')}>Face Swap</button>
+      </div>
 
       <div className="container">
 
-        {/* Model Selection */}
-        <div>
-          <span className="section-title">Select Model</span>
-          <div className="models-grid">
-            {TOP_MODELS.map(model => (
-              <div
-                key={model.id}
-                className={`model-card ${selectedModel === model.id ? 'selected' : ''}`}
-                onClick={() => setSelectedModel(model.id)}
-              >
-                <h3>{model.name}</h3>
-                <p>{model.description}</p>
+        {mode === 'generate' && (
+          <>
+            {/* Model Selection */}
+            <div>
+              <span className="section-title">Select Model</span>
+              <div className="models-grid">
+                {TOP_MODELS.map(model => (
+                  <div
+                    key={model.id}
+                    className={`model-card ${selectedModel === model.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedModel(model.id)}
+                  >
+                    <h3>{model.name}</h3>
+                    <p>{model.description}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Concepts Selection */}
-        <div>
-          <span className="section-title">Enhance with Concepts</span>
-          <div className="concepts-grid">
-            {TOP_CONCEPTS.map(concept => (
-              <div
-                key={concept}
-                className={`concept-chip ${selectedConcepts.includes(concept) ? 'selected' : ''}`}
-                onClick={() => toggleConcept(concept)}
-              >
-                {concept}
+            {/* Concepts Selection */}
+            <div>
+              <span className="section-title">Enhance with Concepts</span>
+              <div className="concepts-grid">
+                {TOP_CONCEPTS.map(concept => (
+                  <div
+                    key={concept}
+                    className={`concept-chip ${selectedConcepts.includes(concept) ? 'selected' : ''}`}
+                    onClick={() => toggleConcept(concept)}
+                  >
+                    {concept}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Input Area */}
-        <div className="input-area">
-          <input
-            type="text"
-            placeholder="Describe your vision..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-          />
-          <button
-            className="generate-btn"
-            onClick={handleGenerate}
-            disabled={loading}
-          >
-            {loading ? 'Creat...' : 'Generate'}
-          </button>
-        </div>
+            {/* Input Area */}
+            <div className="input-group">
+              <div className="input-area">
+                <input
+                  type="text"
+                  placeholder="Describe your unrestricted vision..."
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                />
+                <button
+                  className="generate-btn"
+                  onClick={handleGenerate}
+                  disabled={loading}
+                >
+                  {loading ? 'Gener...' : 'Generate'}
+                </button>
+              </div>
+              <button className="refine-btn" onClick={handleRefine} disabled={loading}>
+                ✨ Refine with DeepSeek
+              </button>
+            </div>
+          </>
+        )}
+
+        {mode === 'faceswap' && (
+          <div className="faceswap-area">
+            <div className="upload-box">
+              <h3>Source Face</h3>
+              <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setSourceImage)} />
+              {sourceImage && <img src={sourceImage} alt="Source" className="preview-thumb" />}
+            </div>
+            <div className="upload-box">
+              <h3>Target Image</h3>
+              <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setTargetImage)} />
+              {targetImage && <img src={targetImage} alt="Target" className="preview-thumb" />}
+            </div>
+            <button className="generate-btn full-width" onClick={handleFaceSwap} disabled={loading}>
+              {loading ? 'Swapping...' : 'Swap Faces'}
+            </button>
+          </div>
+        )}
 
         {/* Results Area */}
         <div className="result-area">
           {loading && <div className="loading-spinner"></div>}
           {error && <div style={{ color: '#ff4d4d' }}>{error}</div>}
           {imageResult && (
-            <img src={imageResult} alt="Generated Art" className="generated-image" />
+            <div className="result-container">
+              <img src={imageResult} alt="Generated Art" className="generated-image" />
+              <a href={imageResult} download={`lucario_agi_${Date.now()}.png`} className="download-btn">
+                Download
+              </a>
+            </div>
           )}
           {!loading && !imageResult && !error && (
-            <p style={{ color: 'rgba(255,255,255,0.2)' }}>Art awaits your command</p>
+            <p style={{ color: 'rgba(255,255,255,0.2)' }}>
+              {mode === 'generate' ? 'Unrestricted AGI awaits.' : 'Upload images to swap.'}
+            </p>
           )}
         </div>
 
       </div>
 
       <footer>
-        Powered by Graydient API • React • Vite
+        LUCARIO AGI • Powered by Graydient x DeepSeek
       </footer>
     </div>
   );
