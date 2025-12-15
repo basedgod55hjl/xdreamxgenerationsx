@@ -115,7 +115,8 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: finalPrompt,
-          model: selectedModel
+          model: selectedModel,
+          workflow: workflow // Pass the selected workflow
         })
       });
 
@@ -215,9 +216,9 @@ function App() {
         {activeTab === 'gen' && (
           <>
             {/* Workflow Selector */}
-            <div className="section-title">WORKFLOW / STYLE</div>
+            <div className="section-title">WORKFLOW PRESETS (HARDCODED)</div>
             <div className="concepts-grid">
-              {['Lucario NSFW', 'Ass Focused', 'Ebony / Thick', 'Photorealistic', 'Anime / Booru', 'Cinematic'].map((wf) => (
+              {['Amateur / BBW', 'Cinematic Flux', 'Lustify / Explicit', 'Lucario NSFW'].map((wf) => (
                 <div
                   key={wf}
                   className={`concept-chip ${workflow === wf ? 'selected' : ''}`}

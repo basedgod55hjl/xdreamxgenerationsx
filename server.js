@@ -15,35 +15,88 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
 // API Proxy to Graydient
+// WORKFLOW CONFIGURATIONS (Hardcoded from User Logs)
+const WORKFLOWS = {
+    'Amateur / BBW': {
+        width: 1024, height: 1536,
+        sampler: "k_euler_a",
+        steps: 32,
+        cfg_scale: 7.0,
+        model: "realvis5-xl",
+        loras: "<realvis5-xl> <portrait-detailerenhancer-xl:0.6> <hyperrealistic-detail-xl:0.7>",
+        pos_prefix: "score_9, masterpiece, best quality, NSFW, photorealistic, ",
+        neg_prefix: "(bad anatomy, melted, blurry, cartoonish, low quality, watermark, bimbo, fake breasts, censored, overly shiny skin), "
+    },
+    'Cinematic Flux': {
+        width: 1024, height: 1024,
+        sampler: "dpm2m",
+        steps: 30,
+        cfg_scale: 1.7,
+        model: "flux-realism", // Assuming flux mapping
+        loras: "<realvis5light-xl> <facedeets4k-xl> <hyperrealistic-detail-xl> <facehelper-xl> <detail-enhanced-xl> <feet25-xl> <detailed-perfect-hands-xl> <portrait-detailerenhancer-xl> <better-anatomy-xl>",
+        pos_prefix: "Close-up cinematic portrait, ",
+        neg_prefix: ""
+    },
+    'Lustify / Explicit': {
+        width: 768, height: 768,
+        sampler: "lcm_base",
+        steps: 10,
+        cfg_scale: 1.0,
+        model: "lustify4-xl", // Logic mapping
+        loras: "<lustify4-xl><dmd:1>",
+        pos_prefix: "(score_9, score_8_up, score_7_up), (masterpiece, hyperrealistic, absurdres), NSFW, masterpiece, ultra-realistic, 8K, highly-detailed, ",
+        neg_prefix: "(score_6, score_5, score_4, mutated, deformed, ugly hands, bad quality, low quality, jpg, boring), "
+    }
+};
+
 app.post('/api/generate', async (req, res) => {
     try {
-        const { prompt, model, negative_prompt } = req.body;
+        const { prompt, workflow, negative_prompt } = req.body;
         const graydientApiKey = process.env.GRAYDIENT_API_KEY || process.env.GRAYDIENT_TOKEN;
 
         if (!graydientApiKey) {
             return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
         }
 
-        // Private Graydient Endpoint (V3)
         const apiUrl = 'https://cxy5wpx250x.graydient.ai/api/v3/render/';
 
-        // Unrestricted payload configuration for V3
-        const payload = {
-            prompt: prompt,
-            model: model || "flux-realism",
-            negative_prompt: negative_prompt || "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)",
-            // V3 Params
-            stream: true,
+        // Default Config
+        let config = {
+            width: 1024, height: 1024,
+            sampler: "DPM++ 2M Karras",
             steps: 40,
             cfg_scale: 7,
-            width: 1024,
-            height: 1024,
+            model: "realvis5-xl",
+            loras: "",
+            pos_prefix: "",
+            neg_prefix: ""
+        };
+
+        // Apply Workflow Overrides
+        if (workflow && WORKFLOWS[workflow]) {
+            config = { ...config, ...WORKFLOWS[workflow] };
+        }
+
+        // Construct Final Prompts
+        const finalPrompt = `${config.pos_prefix}${prompt} ${config.loras}`.trim();
+        const finalNegative = `${config.neg_prefix}${negative_prompt || ''}`.trim();
+
+        const payload = {
+            prompt: finalPrompt,
+            negative_prompt: finalNegative,
+            model: config.model,
+            stream: true,
+            steps: config.steps,
+            cfg_scale: config.cfg_scale,
+            width: config.width,
+            height: config.height,
             samples: 1,
-            // Unrestricted flags (best effort)
             safety_checker: false,
             nsfw: true,
-            // Pass model as "model" or embedded in prompt? V3 often takes "model" field
+            sampler: config.sampler
         };
+
+        console.log(`Generating with workflow: ${workflow || 'Custom'}`); // Debug
 
         const response = await axios.post(apiUrl, payload, {
             headers: {
