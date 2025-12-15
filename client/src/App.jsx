@@ -217,7 +217,7 @@ function App() {
             {/* Workflow Selector */}
             <div className="section-title">WORKFLOW / STYLE</div>
             <div className="concepts-grid">
-              {['Lucario NSFW', 'Photorealistic', 'Anime / Booru', 'Cinematic'].map((wf) => (
+              {['Lucario NSFW', 'Ass Focused', 'Ebony / Thick', 'Photorealistic', 'Anime / Booru', 'Cinematic'].map((wf) => (
                 <div
                   key={wf}
                   className={`concept-chip ${workflow === wf ? 'selected' : ''}`}

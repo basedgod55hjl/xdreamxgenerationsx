@@ -5,7 +5,29 @@ const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
+
+// Config
+const apiKey = process.env.GRAYDIENT_API_KEY || '0Cqo0fZp1ViEI1oFnLLWRDzDcndzycvo8lfyxrLmiWzfgnXO';
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+
+// Utils
+async function sendToTelegram(imageUrl, prompt) {
+    if (!telegramToken || !telegramChatId) return;
+    try {
+        const caption = `🎨 *New Generation*\n\n${prompt.substring(0, 100)}...`;
+        await axios.post(`https://api.telegram.org/bot${telegramToken}/sendPhoto`, {
+            chat_id: telegramChatId,
+            photo: imageUrl,
+            caption: caption,
+            parse_mode: 'Markdown'
+        });
+        console.log('Sent to Telegram');
+    } catch (e) {
+        console.error('Telegram Error:', e.message);
+    }
+}
 
 app.use(cors());
 app.use(express.json());
@@ -15,9 +37,9 @@ app.use(express.static(path.join(__dirname, 'client/dist')));
 app.post('/api/generate', async (req, res) => {
     try {
         const { prompt, model, negative_prompt } = req.body;
-        const apiKey = process.env.GRAYDIENT_API_KEY || process.env.GRAYDIENT_TOKEN;
+        const graydientApiKey = process.env.GRAYDIENT_API_KEY || process.env.GRAYDIENT_TOKEN;
 
-        if (!apiKey) {
+        if (!graydientApiKey) {
             return res.status(500).json({ error: 'Server configuration error: Missing API Key' });
         }
 
@@ -44,7 +66,7 @@ app.post('/api/generate', async (req, res) => {
 
         const response = await axios.post(apiUrl, payload, {
             headers: {
-                'Authorization': `Bearer ${apiKey}`,
+                'Authorization': `Bearer ${graydientApiKey}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -73,6 +95,11 @@ app.post('/api/generate', async (req, res) => {
             data.url = data.output_file;
         } else if (data.url) {
             // Already has url
+        }
+
+        // Send to Telegram asynchronously
+        if (data.url) {
+            sendToTelegram(data.url, prompt).catch(console.error);
         }
 
         res.json(data);
@@ -107,6 +134,10 @@ app.post('/api/refine', async (req, res) => {
             styleContext = "Style: Photorealism, 8k, raw photo, dslr, soft lighting.";
         } else if (workflow === 'Cinematic') {
             styleContext = "Style: Movie still, cinematic lighting, dramatic atmosphere, color grading.";
+        } else if (workflow === 'Ass Focused') {
+            styleContext = "Focus: Ass focused, thick thighs, curves, back view, bent over, explicit anatomy, huge buttocks.";
+        } else if (workflow === 'Ebony / Thick') {
+            styleContext = "Focus: Ebony skin, African-American, very thick body, plump, curvy, detailed skin texture, glistening.";
         } else {
             styleContext = "Style: Lucario NSFW, highly detailed, explicit anatomy, vivid sensory description.";
         }
