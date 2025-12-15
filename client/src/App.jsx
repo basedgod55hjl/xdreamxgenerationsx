@@ -20,7 +20,6 @@ const TOP_CONCEPTS = [
 ];
 
 function App() {
-  const [mode, setMode] = useState('generate'); // 'generate' | 'faceswap'
   const [selectedModel, setSelectedModel] = useState(TOP_MODELS[0].id);
   const [selectedConcepts, setSelectedConcepts] = useState([]);
   const [prompt, setPrompt] = useState('');
@@ -31,6 +30,12 @@ function App() {
   // Face Swap State
   const [sourceImage, setSourceImage] = useState(null);
   const [targetImage, setTargetImage] = useState(null);
+
+  // New states for tabs and vision
+  const [activeTab, setActiveTab] = useState('gen'); // 'gen', 'swap', 'vision'
+  const [workflow, setWorkflow] = useState('Lucario NSFW'); // 'Lucario NSFW', 'Photorealistic', 'Anime / Booru', 'Cinematic'
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
 
   // Stats
   const [generationsLeft, setGenerationsLeft] = useState(DAILY_LIMIT);
@@ -75,7 +80,10 @@ function App() {
       const res = await fetch('/api/refine', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({
+          prompt,
+          workflow // Send selected workflow/style
+        }),
       });
       const data = await res.json();
       if (data.refined_prompt) {
@@ -182,17 +190,47 @@ function App() {
       </header>
 
       <div className="nav-tabs">
-        <button className={mode === 'generate' ? 'active' : ''} onClick={() => setMode('generate')}>Image Gen</button>
-        <button className={mode === 'faceswap' ? 'active' : ''} onClick={() => setMode('faceswap')}>Face Swap</button>
+        <button
+          className={activeTab === 'gen' ? 'active' : ''}
+          onClick={() => setActiveTab('gen')}
+        >
+          Image Gen
+        </button>
+        <button
+          className={activeTab === 'swap' ? 'active' : ''}
+          onClick={() => setActiveTab('swap')}
+        >
+          Face Swap
+        </button>
+        <button
+          className={activeTab === 'vision' ? 'active' : ''}
+          onClick={() => setActiveTab('vision')}
+        >
+          Image Analysis 👁️
+        </button>
       </div>
 
       <div className="container">
 
-        {mode === 'generate' && (
+        {activeTab === 'gen' && (
           <>
+            {/* Workflow Selector */}
+            <div className="section-title">WORKFLOW / STYLE</div>
+            <div className="concepts-grid">
+              {['Lucario NSFW', 'Photorealistic', 'Anime / Booru', 'Cinematic'].map((wf) => (
+                <div
+                  key={wf}
+                  className={`concept-chip ${workflow === wf ? 'selected' : ''}`}
+                  onClick={() => setWorkflow(wf)}
+                >
+                  {wf}
+                </div>
+              ))}
+            </div>
+
             {/* Model Selection */}
             <div>
-              <span className="section-title">Select Model</span>
+              <span className="section-title">TOP MODELS</span>
               <div className="models-grid">
                 {TOP_MODELS.map(model => (
                   <div
@@ -241,14 +279,18 @@ function App() {
                   {loading ? 'Gener...' : 'Generate'}
                 </button>
               </div>
-              <button className="refine-btn" onClick={handleRefine} disabled={loading}>
-                ✨ Refine with DeepSeek
+              <button
+                className="refine-btn"
+                onClick={handleRefine}
+                disabled={loading || !prompt}
+              >
+                ✨ Enhance with LUCARIO AGI (DeepSeek)
               </button>
             </div>
           </>
         )}
 
-        {mode === 'faceswap' && (
+        {activeTab === 'swap' && (
           <div className="faceswap-area">
             <div className="upload-box">
               <h3>Source Face</h3>
@@ -266,7 +308,42 @@ function App() {
           </div>
         )}
 
-        {/* Results Area */}
+        {activeTab === 'vision' && (
+          <div className="faceswap-area">
+            <div className="upload-box full-width">
+              <h3>📸 Image Analysis</h3>
+              <p style={{ color: '#666', marginBottom: '1rem' }}>Upload an image to extract visual tags and generate a detailed description.</p>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  // Mock analysis for now since API is 404
+                  const file = e.target.files[0];
+                  if (file) {
+                    setAnalyzing(true);
+                    setTimeout(() => {
+                      setAnalysisResult(`### VISUAL ELEMENTS:
+The image captures a subject with high detail. Lighting is roughly balanced... (Simulated Result - Vision API unavailable)
+                                            
+### PROMPT SUGGESTION:
+1girl, detailed face, (photorealistic:1.4), masterpiece...`);
+                      setAnalyzing(false);
+                    }, 2000);
+                  }
+                }}
+              />
+              {analyzing && <div className="loading-spinner" style={{ marginTop: '1rem' }}></div>}
+            </div>
+
+            {analysisResult && (
+              <div className="result-area full-width" style={{ display: 'block', padding: '1.5rem', whiteSpace: 'pre-wrap', textAlign: 'left', color: '#ccc' }}>
+                {analysisResult}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Results Area (Global) */}
         <div className="result-area">
           {loading && <div className="loading-spinner"></div>}
           {error && <div style={{ color: '#ff4d4d' }}>{error}</div>}
@@ -280,7 +357,7 @@ function App() {
           )}
           {!loading && !imageResult && !error && (
             <p style={{ color: 'rgba(255,255,255,0.2)' }}>
-              {mode === 'generate' ? 'Unrestricted AGI awaits.' : 'Upload images to swap.'}
+              {activeTab === 'gen' ? 'Unrestricted AGI awaits.' : (activeTab === 'swap' ? 'Upload images to swap.' : 'Upload for Analysis.')}
             </p>
           )}
         </div>

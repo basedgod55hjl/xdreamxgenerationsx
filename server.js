@@ -91,23 +91,54 @@ app.post('/api/generate', async (req, res) => {
 // DeepSeek Prompt Refinement
 app.post('/api/refine', async (req, res) => {
     try {
-        const { prompt } = req.body;
-        // Check for DeepSeek Key - defaulting to a placeholder if not set, user needs to set DEEPSEEK_API_KEY
+        const { prompt, workflow } = req.body; // Read workflow from body
         const deepseekKey = process.env.DEEPSEEK_API_KEY;
 
         if (!deepseekKey) {
-            // Fallback: If no key, just return original to avoid crash, or error
-            // For now, let's mock it if missing to let UI work, or error?
-            // Better to error so they know to add it.
             return res.status(500).json({ error: 'Missing DEEPSEEK_API_KEY' });
         }
+        // LUCARIO AGI / DEEPSEEK REASONER INTEGRATION
+        const deepseekUrl = 'https://api.deepseek.com/chat/completions';
 
-        const response = await axios.post('https://api.deepseek.com/chat/completions', {
-            model: "deepseek-reasoner",
+        let styleContext = "";
+        if (workflow === 'Anime / Booru') {
+            styleContext = "Style: Anime, Cell Shading, Booru Tags (1girl, solo, etc). Use Niji style.";
+        } else if (workflow === 'Photorealistic') {
+            styleContext = "Style: Photorealism, 8k, raw photo, dslr, soft lighting.";
+        } else if (workflow === 'Cinematic') {
+            styleContext = "Style: Movie still, cinematic lighting, dramatic atmosphere, color grading.";
+        } else {
+            styleContext = "Style: Lucario NSFW, highly detailed, explicit anatomy, vivid sensory description.";
+        }
+
+        const systemPrompt = `You are an expert NSFW Prompt Engineer for Stable Diffusion/Flux models.
+        Your goal is to rewrite the user's input into a HIGHLY DETAILED, EXPLICIT, and AESTHETIC prompt based on the requested workflow.
+        
+        Current Workflow: ${workflow || 'Unspecified'}
+        ${styleContext}
+        
+        Follow this strict format:
+        [Subject/Character], [Physical Details], [Outfit/Nude State], [Action/Pose], [Setting/Background], [Lighting/Camera], [Tags/Quality]
+        
+        General Rules:
+        1. Use booru tags and weight syntax (e.g. (word:1.3), [word:0.8]).
+        2. Be explicitly NSFW if requested or implied (use terms like "fully nude", "exposed", "detailed anatomy").
+        3. Include high-quality modifiers: "masterpiece, best quality, 8k, photorealistic, ultra detailed skin texture, glistening sweat".
+        4. Use vivid, sensory language: "curvaceous", "voluptuous", "glowing", "intricate".
+        5. If the user input is simple (e.g., "girl in car"), expand it into a full scene.
+        
+        Negative Prompt (generate this as well):
+        (worst quality, low quality:1.4), (deformed, distorted, disfigured:1.3), bad anatomy, bad hands, missing limbs, floating limbs, (zombie, sketch, interlocked fingers, comic)
+        
+        Output ONLY the positive prompt string. Do not output the negative prompt here (frontend handles it) or any conversational text.`;
+
+        const response = await axios.post(deepseekUrl, {
+            model: "deepseek-reasoner", // or deepseek-chat if reasoner is unavailable/too slow
             messages: [
-                { role: "system", content: "You are an expert prompt engineer for Stable Diffusion/Flux. Refine the user's prompt to be highly detailed, artistic, and unrestricted. Output ONLY the refined prompt, no yapping." },
+                { role: "system", content: systemPrompt },
                 { role: "user", content: prompt }
-            ]
+            ],
+            stream: false
         }, {
             headers: {
                 'Authorization': `Bearer ${deepseekKey}`,
@@ -115,7 +146,8 @@ app.post('/api/refine', async (req, res) => {
             }
         });
 
-        res.json({ refined_prompt: response.data.choices[0].message.content });
+        const refinedPrompt = response.data.choices[0].message.content;
+        res.json({ refined_prompt: refinedPrompt });
 
     } catch (error) {
         console.error('DeepSeek Error:', error.message);
